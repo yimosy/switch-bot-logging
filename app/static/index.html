@@ -49,6 +49,7 @@
   }
   #updated { font-size: 12px; color: var(--text-dim); }
   main { padding: 20px 24px 40px; max-width: 1200px; margin: 0 auto; }
+  .cards-hint { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
   .cards {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
@@ -60,7 +61,13 @@
     border: 1px solid var(--panel-border);
     border-radius: 12px;
     padding: 14px 16px;
+    cursor: pointer;
+    user-select: none;
+    transition: opacity 0.15s, border-color 0.15s;
   }
+  .card:hover { border-color: var(--text-dim); }
+  .card.off { opacity: 0.35; }
+  .card.off .name::after { content: " (非表示)"; font-size: 11px; color: var(--text-dim); }
   .card .name {
     font-size: 14px;
     font-weight: 600;
@@ -69,7 +76,7 @@
     gap: 8px;
     margin-bottom: 8px;
   }
-  .card .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .card .dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
   .card .values { display: flex; flex-wrap: wrap; gap: 4px 16px; }
   .card .value { font-size: 22px; font-weight: 700; }
   .card .value small { font-size: 12px; font-weight: 400; color: var(--text-dim); margin-left: 2px; }
@@ -99,6 +106,7 @@
 </header>
 <main>
   <div id="empty">まだデータがありません。ロガーがデータを保存するとここに表示されます。</div>
+  <div class="cards-hint">カードをクリックするとグラフの表示/非表示を切り替えられます</div>
   <div class="cards" id="cards"></div>
   <div id="charts"></div>
 </main>
@@ -116,18 +124,34 @@ const METRIC_DEFS = [
   { key: "light_level", title: "照度レベル", unit: "" },
   { key: "battery", title: "電池残量 (%)", unit: "%" },
 ];
-const PALETTE = ["#38bdf8", "#fb923c", "#4ade80", "#f472b6", "#a78bfa", "#facc15", "#2dd4bf", "#f87171"];
+// Okabe-Ito カラーユニバーサルパレット(暗背景向けに明るい色を優先)
+const PALETTE = ["#56B4E9", "#E69F00", "#F0E442", "#CC79A7", "#009E73", "#FFFFFF", "#D55E00", "#94a3b8"];
+// 色だけに頼らないための識別: デバイスごとにマーカー形状を変える
+const POINT_STYLES = ["circle", "rect", "triangle", "rectRot", "cross", "star", "circle", "rect"];
 const REFRESH_MS = 60000;
 
 let currentHours = 24;
-const charts = {};        // metric key -> Chart instance
-const deviceColors = {};  // deviceId -> color
+let lastLatest = [];
+let lastData = null;
+const charts = {};       // metric key -> Chart instance
+const deviceIndex = {};  // deviceId -> palette index
+let hiddenDevices = new Set(JSON.parse(localStorage.getItem("hiddenDevices") || "[]"));
 
-function colorFor(deviceId) {
-  if (!(deviceId in deviceColors)) {
-    deviceColors[deviceId] = PALETTE[Object.keys(deviceColors).length % PALETTE.length];
+function idxFor(deviceId) {
+  if (!(deviceId in deviceIndex)) {
+    deviceIndex[deviceId] = Object.keys(deviceIndex).length;
   }
-  return deviceColors[deviceId];
+  return deviceIndex[deviceId];
+}
+function colorFor(deviceId) { return PALETTE[idxFor(deviceId) % PALETTE.length]; }
+function styleFor(deviceId) { return POINT_STYLES[idxFor(deviceId) % POINT_STYLES.length]; }
+
+function toggleDevice(deviceId) {
+  if (hiddenDevices.has(deviceId)) hiddenDevices.delete(deviceId);
+  else hiddenDevices.add(deviceId);
+  localStorage.setItem("hiddenDevices", JSON.stringify([...hiddenDevices]));
+  renderCards(lastLatest);
+  if (lastData) updateCharts(lastData);
 }
 
 function fmtTime(iso) {
@@ -157,7 +181,8 @@ function renderCards(latest) {
   box.innerHTML = "";
   latest.forEach(d => {
     const card = document.createElement("div");
-    card.className = "card";
+    card.className = "card" + (hiddenDevices.has(d.deviceId) ? " off" : "");
+    card.onclick = () => toggleDevice(d.deviceId);
     const vals = [];
     if (d.temperature != null) vals.push(`<span class="value">${d.temperature}<small>℃</small></span>`);
     if (d.humidity != null) vals.push(`<span class="value">${d.humidity}<small>%</small></span>`);
@@ -190,7 +215,15 @@ function ensureChart(metric) {
       animation: false,
       interaction: { mode: "nearest", axis: "x", intersect: false },
       plugins: {
-        legend: { labels: { color: "#e2e8f0", usePointStyle: true, pointStyle: "circle", boxHeight: 7 } },
+        legend: {
+          labels: {
+            color: "#e2e8f0",
+            usePointStyle: true,
+            boxHeight: 9,
+            boxWidth: 18,
+            font: { size: 13 },
+          },
+        },
         tooltip: {
           callbacks: {
             label: c => `${c.dataset.label}: ${c.parsed.y}${metric.unit}`,
@@ -204,11 +237,11 @@ function ensureChart(metric) {
             tooltipFormat: "MM/dd HH:mm",
             displayFormats: { hour: "HH:mm", day: "MM/dd", minute: "HH:mm" },
           },
-          ticks: { color: "#94a3b8", maxTicksLimit: 10 },
+          ticks: { color: "#cbd5e1", maxTicksLimit: 10, font: { size: 12 } },
           grid: { color: "#334155" },
         },
         y: {
-          ticks: { color: "#94a3b8" },
+          ticks: { color: "#cbd5e1", font: { size: 12 } },
           grid: { color: "#334155" },
         },
       },
@@ -218,8 +251,9 @@ function ensureChart(metric) {
 }
 
 function updateCharts(data) {
+  const series = data.series.filter(s => !hiddenDevices.has(s.deviceId));
   METRIC_DEFS.forEach(metric => {
-    const hasData = data.available[metric.key];
+    const hasData = series.some(s => s.points.some(p => p[metric.key] != null));
     const existingPanel = document.getElementById(`panel-${metric.key}`);
     if (!hasData) {
       if (existingPanel) existingPanel.style.display = "none";
@@ -227,7 +261,7 @@ function updateCharts(data) {
     }
     const chart = ensureChart(metric);
     document.getElementById(`panel-${metric.key}`).style.display = "";
-    chart.data.datasets = data.series
+    chart.data.datasets = series
       .filter(s => s.points.some(p => p[metric.key] != null))
       .map(s => {
         const pts = s.points
@@ -240,9 +274,10 @@ function updateCharts(data) {
           backgroundColor: colorFor(s.deviceId),
           borderWidth: 2,
           // 外気(Open-Meteo)は破線で室内センサーと区別する
-          borderDash: s.deviceType === "OpenMeteo" ? [6, 4] : [],
+          borderDash: s.deviceType === "OpenMeteo" ? [8, 5] : [],
+          pointStyle: styleFor(s.deviceId),
           // データが少ないうちは線が描けないので点を見せる
-          pointRadius: pts.length < 20 ? 3 : 0,
+          pointRadius: pts.length < 20 ? 4 : 0,
           pointHitRadius: 8,
           tension: 0.25,
         };
@@ -257,7 +292,11 @@ async function refresh() {
       fetch("/api/latest").then(r => r.json()),
       fetch(`/api/measurements?hours=${currentHours}`).then(r => r.json()),
     ]);
+    lastLatest = latest;
+    lastData = data;
     document.getElementById("empty").style.display = latest.length ? "none" : "block";
+    // 色とマーカーの割り当てをカード表示順(名前順)で固定する
+    latest.forEach(d => idxFor(d.deviceId));
     renderCards(latest);
     updateCharts(data);
     document.getElementById("updated").textContent =
