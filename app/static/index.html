@@ -96,6 +96,30 @@
     padding: 60px 20px;
     display: none;
   }
+  /* スマホ: カードを2列コンパクトにしてファーストビューにグラフを入れる */
+  @media (max-width: 640px) {
+    header { padding: 10px 16px; gap: 8px; }
+    header h1 { font-size: 15px; }
+    #updated { display: none; }
+    main { padding: 12px 16px 32px; }
+    .cards-hint { font-size: 11px; margin-bottom: 6px; }
+    .cards { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 16px; }
+    .card { padding: 8px 10px; border-radius: 10px; }
+    .card .name { font-size: 12px; margin-bottom: 4px; gap: 6px; }
+    .card .dot { width: 10px; height: 10px; }
+    .card .values { gap: 2px 8px; }
+    .card .value { font-size: 16px; }
+    .card .value small { font-size: 10px; }
+    .card .meta {
+      margin-top: 4px;
+      font-size: 10px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .chart-panel { padding: 12px; margin-bottom: 14px; }
+    .chart-wrap { height: 220px; }
+  }
 </style>
 </head>
 <body>
