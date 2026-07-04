@@ -1,0 +1,19 @@
+# アプリデータ・秘密情報
+data/
+.env
+*.db
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# macOS
+.DS_Store
+.AppleDouble
+._*
+
+# Claude Code
+.claude/
+CLAUDE.local.md

@@ -1,0 +1,47 @@
+services:
+  switchbot-logger:
+    build: .
+    container_name: switchbot-logger
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - switchbot-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  switchbot-web:
+    build: .
+    container_name: switchbot-web
+    restart: unless-stopped
+    command: ["python", "web.py"]
+    env_file: .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - switchbot-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # PostgreSQLを使う場合は .env の DATABASE_URL を
+  # postgresql+psycopg2://switchbot:switchbot@db:5432/switchbot に変更
+  db:
+    image: postgres:16-alpine
+    container_name: switchbot-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: switchbot
+      POSTGRES_PASSWORD: switchbot
+      POSTGRES_DB: switchbot
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U switchbot -d switchbot"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  switchbot-data:
+  postgres-data:
