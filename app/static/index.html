@@ -239,6 +239,8 @@ function updateCharts(data) {
           borderColor: colorFor(s.deviceId),
           backgroundColor: colorFor(s.deviceId),
           borderWidth: 2,
+          // 外気(Open-Meteo)は破線で室内センサーと区別する
+          borderDash: s.deviceType === "OpenMeteo" ? [6, 4] : [],
           // データが少ないうちは線が描けないので点を見せる
           pointRadius: pts.length < 20 ? 3 : 0,
           pointHitRadius: 8,

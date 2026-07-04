@@ -1,8 +1,10 @@
+import json
 import logging
 import time
 
 import config
-from db import build_measurement, make_session_factory
+import weather
+from db import Measurement, build_measurement, make_session_factory
 from switchbot import SwitchBotClient
 
 logging.basicConfig(
@@ -23,6 +25,28 @@ def select_target_devices(devices: list[dict]) -> list[dict]:
     return targets
 
 
+def poll_weather(session) -> int:
+    """Log outdoor weather from Open-Meteo as a pseudo device. Returns rows added."""
+    if not config.WEATHER_ENABLED:
+        return 0
+    try:
+        current = weather.fetch_current(config.WEATHER_LATITUDE, config.WEATHER_LONGITUDE)
+    except Exception as e:
+        logger.error("Failed to fetch weather: %s", e)
+        return 0
+    m = Measurement(
+        device_id="open-meteo",
+        device_name=config.WEATHER_DEVICE_NAME,
+        device_type="OpenMeteo",
+        temperature=current.get("temperature_2m"),
+        humidity=current.get("relative_humidity_2m"),
+        raw_status=json.dumps(current, ensure_ascii=False),
+    )
+    session.add(m)
+    logger.info("%s (OpenMeteo): temp=%s hum=%s", m.device_name, m.temperature, m.humidity)
+    return 1
+
+
 def poll_once(client: SwitchBotClient, session_factory) -> None:
     devices = select_target_devices(client.list_devices())
     if not devices:
@@ -31,10 +55,9 @@ def poll_once(client: SwitchBotClient, session_factory) -> None:
             config.TARGET_DEVICE_TYPES,
             config.TARGET_DEVICE_IDS or "all",
         )
-        return
 
     with session_factory() as session:
-        saved = 0
+        saved = poll_weather(session)
         for device in devices:
             try:
                 status = client.get_device_status(device["deviceId"])

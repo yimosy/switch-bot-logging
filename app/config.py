@@ -34,3 +34,10 @@ TARGET_DEVICE_IDS = _split_csv(os.environ.get("TARGET_DEVICE_IDS", ""))
 
 # Port for the visualization web server (web.py)
 WEB_PORT = int(os.environ.get("WEB_PORT", "8080"))
+
+# Outdoor weather logging via Open-Meteo (optional).
+# Set both latitude and longitude to enable; logged as a pseudo device.
+WEATHER_LATITUDE = os.environ.get("WEATHER_LATITUDE", "").strip()
+WEATHER_LONGITUDE = os.environ.get("WEATHER_LONGITUDE", "").strip()
+WEATHER_DEVICE_NAME = os.environ.get("WEATHER_DEVICE_NAME", "外気")
+WEATHER_ENABLED = bool(WEATHER_LATITUDE and WEATHER_LONGITUDE)
