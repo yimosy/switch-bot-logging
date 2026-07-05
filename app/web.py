@@ -7,7 +7,11 @@ from flask import Flask, jsonify, request, send_from_directory
 from waitress import serve
 
 import config
-from db import Measurement, make_session_factory
+from db import Measurement, WeatherMeasurement, make_session_factory
+
+# 外気(weather_measurements)はダッシュボード上では擬似デバイスとして扱う
+WEATHER_DEVICE_ID = "open-meteo"
+WEATHER_DEVICE_TYPE = "OpenMeteo"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -76,6 +80,15 @@ def api_measurements():
             q = q.filter(Measurement.device_id == device_id)
         rows = q.all()
 
+        wrows = []
+        if device_id in (None, WEATHER_DEVICE_ID):
+            wrows = (
+                session.query(WeatherMeasurement)
+                .filter(WeatherMeasurement.recorded_at >= cutoff.replace(tzinfo=None))
+                .order_by(WeatherMeasurement.recorded_at)
+                .all()
+            )
+
     # Group rows into one series per device
     by_device: dict[str, dict] = {}
     for r in rows:
@@ -98,6 +111,25 @@ def api_measurements():
                 "light_level": r.light_level,
             }
         )
+
+    # Merge outdoor weather in as a pseudo device series
+    if wrows:
+        by_device[WEATHER_DEVICE_ID] = {
+            "deviceId": WEATHER_DEVICE_ID,
+            "deviceName": config.WEATHER_DEVICE_NAME,
+            "deviceType": WEATHER_DEVICE_TYPE,
+            "points": [
+                {
+                    "t": _to_iso_utc(w.recorded_at),
+                    "temperature": w.temperature,
+                    "humidity": w.humidity,
+                    "co2": None,
+                    "battery": None,
+                    "light_level": None,
+                }
+                for w in wrows
+            ],
+        }
 
     # Thin long series so the chart stays responsive (always keep the last point)
     for series in by_device.values():
@@ -144,6 +176,26 @@ def api_latest():
                     "co2": r.co2,
                     "battery": r.battery,
                     "light_level": r.light_level,
+                }
+            )
+
+        w = (
+            session.query(WeatherMeasurement)
+            .order_by(WeatherMeasurement.recorded_at.desc())
+            .first()
+        )
+        if w is not None:
+            result.append(
+                {
+                    "deviceId": WEATHER_DEVICE_ID,
+                    "deviceName": config.WEATHER_DEVICE_NAME,
+                    "deviceType": WEATHER_DEVICE_TYPE,
+                    "recordedAt": _to_iso_utc(w.recorded_at),
+                    "temperature": w.temperature,
+                    "humidity": w.humidity,
+                    "co2": None,
+                    "battery": None,
+                    "light_level": None,
                 }
             )
     result.sort(key=lambda x: x["deviceName"])

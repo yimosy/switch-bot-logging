@@ -12,7 +12,24 @@ def fetch_current(latitude: str, longitude: str, timeout: int = 30) -> dict:
         params={
             "latitude": latitude,
             "longitude": longitude,
-            "current": "temperature_2m,relative_humidity_2m",
+            "current": ",".join(
+                [
+                    "temperature_2m",
+                    "relative_humidity_2m",
+                    "apparent_temperature",
+                    "is_day",
+                    "precipitation",
+                    "rain",
+                    "snowfall",
+                    "weather_code",
+                    "cloud_cover",
+                    "pressure_msl",
+                    "surface_pressure",
+                    "wind_speed_10m",
+                    "wind_direction_10m",
+                    "wind_gusts_10m",
+                ]
+            ),
         },
         timeout=timeout,
     )

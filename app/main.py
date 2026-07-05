@@ -1,10 +1,15 @@
-import json
 import logging
 import time
 
 import config
 import weather
-from db import Measurement, build_measurement, make_session_factory
+from db import (
+    Measurement,
+    WeatherMeasurement,
+    build_measurement,
+    build_weather_measurement,
+    make_session_factory,
+)
 from switchbot import SwitchBotClient
 
 logging.basicConfig(
@@ -26,7 +31,7 @@ def select_target_devices(devices: list[dict]) -> list[dict]:
 
 
 def poll_weather(session) -> int:
-    """Log outdoor weather from Open-Meteo as a pseudo device. Returns rows added."""
+    """Log outdoor weather from Open-Meteo into weather_measurements. Returns rows added."""
     if not config.WEATHER_ENABLED:
         return 0
     try:
@@ -34,17 +39,38 @@ def poll_weather(session) -> int:
     except Exception as e:
         logger.error("Failed to fetch weather: %s", e)
         return 0
-    m = Measurement(
-        device_id="open-meteo",
-        device_name=config.WEATHER_DEVICE_NAME,
-        device_type="OpenMeteo",
-        temperature=current.get("temperature_2m"),
-        humidity=current.get("relative_humidity_2m"),
-        raw_status=json.dumps(current, ensure_ascii=False),
-    )
+    m = build_weather_measurement(current)
     session.add(m)
-    logger.info("%s (OpenMeteo): temp=%s hum=%s", m.device_name, m.temperature, m.humidity)
+    logger.info(
+        "%s (OpenMeteo): temp=%s hum=%s precip=%s wind=%s pressure=%s",
+        config.WEATHER_DEVICE_NAME,
+        m.temperature, m.humidity, m.precipitation, m.wind_speed, m.pressure_msl,
+    )
     return 1
+
+
+def migrate_legacy_weather(session_factory) -> None:
+    """measurementsに擬似デバイスとして保存していた旧外気データをweather_measurementsへ移す。"""
+    with session_factory() as session:
+        legacy = (
+            session.query(Measurement)
+            .filter(Measurement.device_id == "open-meteo")
+            .all()
+        )
+        if not legacy:
+            return
+        for r in legacy:
+            session.add(
+                WeatherMeasurement(
+                    recorded_at=r.recorded_at,
+                    temperature=r.temperature,
+                    humidity=r.humidity,
+                    raw_status=r.raw_status,
+                )
+            )
+            session.delete(r)
+        session.commit()
+        logger.info("Migrated %d legacy weather row(s) to weather_measurements", len(legacy))
 
 
 def poll_once(client: SwitchBotClient, session_factory) -> None:
@@ -80,6 +106,7 @@ def poll_once(client: SwitchBotClient, session_factory) -> None:
 def main() -> None:
     client = SwitchBotClient(config.SWITCHBOT_TOKEN, config.SWITCHBOT_SECRET)
     session_factory = make_session_factory(config.DATABASE_URL)
+    migrate_legacy_weather(session_factory)
     logger.info(
         "Starting polling loop: interval=%ss, db=%s",
         config.POLL_INTERVAL_SECONDS,
