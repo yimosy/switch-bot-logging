@@ -92,6 +92,18 @@ DATABASE_URL=postgresql+psycopg2://switchbot:switchbot@db:5432/switchbot
 docker compose up -d --build
 ```
 
+### GUIクライアント(TablePlus等)から接続する
+
+`db` サービスはポート5432を公開しているので、同じLAN内のPCからGUIクライアントで直接接続できます:
+
+| 項目 | 値 |
+|---|---|
+| Host | サーバーのIPアドレス(例: `192.168.x.x`) |
+| Port | `5432` |
+| User / Password / Database | `switchbot` / `switchbot` / `switchbot` |
+
+外部から接続できる環境(ポートフォワーディング等)がある場合は、パスワードの変更やポート公開の削除(SSHトンネル経由に切替)を検討してください。
+
 ## 環境変数
 
 | 変数 | デフォルト | 説明 |
